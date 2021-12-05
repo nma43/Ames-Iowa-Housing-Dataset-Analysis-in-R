@@ -1,0 +1,688 @@
+---
+title: "Peer Assessment II"
+output:
+  pdf_document: default
+  html_document:
+    pandoc_args: --number-sections
+---
+
+# Background
+
+As a statistical consultant working for a real estate investment firm, your task is to develop a model to predict the selling price of a given home in Ames, Iowa. Your employer hopes to use this information to help assess whether the asking price of a house is higher or lower than the true value of the house. If the home is undervalued, it may be a good investment for the firm.
+
+# Training Data and relevant packages
+
+In order to better assess the quality of the model you will produce, the data have been randomly divided into three separate pieces: a training data set, a testing data set, and a validation data set. For now we will load the training data set, the others will be loaded and used later.
+
+```{r load, message = FALSE}
+load("ames_train.Rdata")
+```
+
+Use the code block below to load any necessary packages
+
+```{r packages, message = FALSE}
+library(statsr)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+df<-ames_train
+```
+
+## Part 1 - Exploratory Data Analysis (EDA)
+
+When you first get your data, it's very tempting to immediately begin fitting models and assessing how they perform.  However, before you begin modeling, it's absolutely essential to explore the structure of the data and the relationships between the variables in the data set.
+
+Do a detailed EDA of the ames_train data set, to learn about the structure of the data and the relationships between the variables in the data set (refer to Introduction to Probability and Data, Week 2, for a reminder about EDA if needed). Your EDA should involve creating and reviewing many plots/graphs and considering the patterns and relationships you see. 
+
+After you have explored completely, submit the three graphs/plots that you found most informative during your EDA process, and briefly explain what you learned from each (why you found each informative).
+
+* * *
+
+First of all, we will create log_transformed variables which will aid in further analysis as indicated by previous quizzes:
+
+```{r}
+df<-df%>%mutate(log_price=log(price))
+df<-df%>%mutate(log_area=log(area))
+df<-df%>%mutate(log_lot_area=log(Lot.Area))
+
+```
+
+
+Let us visualize the distribution of log_price:
+```{r creategraphs}
+df%>%ggplot(aes(x=log_price))+geom_histogram()
+```
+
+We can see that the distribution is fairly normal.
+
+Let us investigate if the presence of Central Air Conditioning is associated with higher price of a house:
+
+Let us see some summary statistics and plots pertaining to this question:
+```{r}
+df%>%group_by(Central.Air)%>%summarise(mean_log_price=mean(log_price),median_log_price=median(log_price),sd_log_price=sd(log_price),number=n())
+```
+
+```{r}
+df%>%ggplot(aes(x=Central.Air,y=log_price))+geom_boxplot()
+```
+
+We can see that both the summary statistics and the box-plot indicate that price of homes with Central Air Conditioning is higher. Mean log price for homes with CAC is 12.1 while that for homes without CAC is 11.4. Also, the variance for homes without Central Air conditioning is higher. Let us see if this difference is statistically significant.
+The conditions for the t-test for difference between 2 means is met.
+
+```{r}
+inference(data=df,x=Central.Air,y=log_price,typ='ht',method='theoretical',statistic='mean',null=0,alternative='greater',order = c('Y','N'))
+```
+
+From this test, we get a t-statistic greater than 10 which gives us a p-value < 0.0001. According to this, assuming the two means are equal, the probability of obtaining two samples of given size from the two groups whose means differ by at least 12.0561-11.3719 is less than 0.0001. 
+Thus, we can say that mean log price for homes with Central Air conditioning is higher than that for homes without Central Air Conditioning.
+
+The houses in the data-set have different types of foundations as shown below:
+```{r}
+summary(df$Foundation)
+```
+
+Let us see if the price of a house varies with the type of foundation:
+```{r}
+df%>%group_by(Foundation)%>%summarise(mean_log_price=mean(log_price),median_log_price=median(log_price),sd_log_price=sd(log_price),number=n())
+```
+
+```{r}
+df%>%ggplot(aes(x=reorder(Foundation,log_price),y=log_price))+geom_boxplot(fill='green')+xlab('Foundation')+ylab('log_price')
+```
+
+We can see that Concrete foundation homes are the most expensive with mean log price of 12.3.  
+
+Now, we expect higher quality homes to have higher selling prices. Let us confirm this notion with the help of some summary statistics and plots:
+
+```{r}
+df%>%ggplot(aes(x=factor(Overall.Qual),y=log_price))+geom_boxplot(fill='green')+xlab('Overall Quality')
+
+df%>%group_by(Overall.Qual)%>%summarise(mean_log_price=mean(log_price),median_log_price=median(log_price),sd_log_price=sd(log_price),number=n())
+```
+
+From the summary statistics as well as from the box-plots, we can observe that higher quality is associated with higher price. Thus, maintaining good quality can earn rich dividends.
+
+Now, other two variables which I found interesting were Land.Contour and Lot.Shape. Let us check them out:
+
+```{r}
+summary(df$Land.Contour)
+```
+```{r}
+summary(df$Lot.Shape)
+```
+
+We can see that Land.Contour can be divided into two broad categories: Level/Not-Level.
+Similarly, Lot.Shape can be divided into two broad categories: Regular/Irregular.
+
+Let us investigate these variables in more detail:
+
+```{r}
+df%>%ggplot(aes(x=Land.Contour))+geom_bar()
+```
+```{r}
+df%>%ggplot(aes(x=Lot.Shape))+geom_bar()
+```
+
+We can see that majority of Land Contours are level and majority of Lot Shapes are regular. We want to investigate if the Land Contour is associated with regular or irregular lot shape. Let us divide these variables into the two broad categories as mentioned earlier:
+
+```{r}
+x_dat<-df
+x_dat<-x_dat%>%mutate(Land.Contour.New=factor(ifelse(Land.Contour=='Lvl','Level','Not Level')))
+x_dat<-x_dat%>%mutate(Lot.Shape.New=factor(ifelse(Lot.Shape=='Reg','Regular','Irrelgular')))
+```
+
+Let us visualize the contingency table for the two variables:
+```{r}
+table(x_dat$Lot.Shape.New,x_dat$Land.Contour.New)
+```
+
+The proportion of Regular Lots is 0.6413 and 0.5055 for Level and Not-Level Contours respectively. Let us see if this difference is statistically significant:
+Let us conduct a test for the difference between the two proportions:
+
+```{r}
+inference(data=x_dat,y=Lot.Shape.New,x=Land.Contour.New,type='ht',statistic='proportion',method='theoretical',null=0,alternative='greater',success='Regular',order=c('Level','Not Level'))
+```
+
+We get a Z-score of 2.5581
+
+From this test, we can infer that Land Contours which are level are more likely to have Regular Shaped Plots.
+
+* * *
+
+## Part 2 - Development and assessment of an initial model, following a semi-guided process of analysis
+
+### Section 2.1 An Initial Model
+In building a model, it is often useful to start by creating a simple, intuitive initial model based on the results of the exploratory data analysis. (Note: The goal at this stage is **not** to identify the "best" possible model but rather to choose a reasonable and understandable starting point. Later you will expand and revise this model to create your final model.
+
+Based on your EDA, select *at most* 10 predictor variables from “ames_train” and create a linear model for `price` (or a transformed version of price) using those variables. Provide the *R code* and the *summary output table* for your model, a *brief justification* for the variables you have chosen, and a *brief discussion* of the model results in context (focused on the variables that appear to be important predictors and how they relate to sales price).
+
+* * *
+
+From the EDA, We can observe that the basement variables have a lot of null values. These mean that th house has no basement. Thus, let us re-code them. Also, some of them have a single null value. We will eliminate that observation:
+```{r}
+df<-df%>%mutate(Bsmt.Qual=factor(ifelse(is.na(df$Bsmt.Qual),'No_Bsmt',Bsmt.Qual)))
+df<-df%>%mutate(Bsmt.Cond=factor(ifelse(is.na(df$Bsmt.Cond),'No_Bsmt',Bsmt.Cond)))
+df<-df%>%mutate(Bsmt.Exposure=factor(ifelse(is.na(df$Bsmt.Exposure),'No_Bsmt',Bsmt.Exposure)))
+df<-df%>%mutate(BsmtFin.Type.1=factor(ifelse(is.na(df$BsmtFin.Type.1),'No_Bsmt',BsmtFin.Type.1)))
+df<-df%>%mutate(BsmtFin.Type.2=factor(ifelse(is.na(df$BsmtFin.Type.2),'No_Bsmt',BsmtFin.Type.2)))
+df<-df%>%mutate(Fireplace.Qu=factor(ifelse(is.na(df$Fireplace.Qu),'No_Fireplace',Fireplace.Qu)))
+df<-df%>%mutate(Garage.Qual=factor(ifelse(is.na(df$Garage.Qual),'No_Garage',Garage.Qual)))
+df<-df%>%mutate(Garage.Cond=factor(ifelse(is.na(df$Garage.Cond),'No_Garage',Garage.Cond)))
+df<-df%>%filter(!(is.na(BsmtFin.SF.1)),!(is.na(BsmtFin.SF.2)),!(is.na(Bsmt.Unf.SF)),!(is.na(Total.Bsmt.SF)),!(is.na(Bsmt.Full.Bath)),!(is.na(Bsmt.Half.Bath)))
+df<-df%>%filter(!(is.na(Garage.Cars)))
+```
+
+Further, some Ordinal Categorical variables are not encoded ordianlly. Let us redo that:
+```{r}
+df$Exter.Qual<-factor(df$Exter.Qual,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df$Exter.Cond<-factor(df$Exter.Cond,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df$Heating.QC<-factor(df$Heating.QC,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df$Kitchen.Qual<-factor(df$Kitchen.Qual,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df$Functional<-factor(df$Functional,ordered=T,levels=c('Sal','Sev','Maj2','Maj1','Mod','Min2','Min1','Typ'))
+
+```
+
+Based on the EDA which we have conducted, here is a initial model which will be updated later:
+I have included the following variables: Lot.Shape, Neighborhood, Overall.Qual, log_area, Foundation, X1st.Flr.SF, Total.Bsmt, Central.Air, Bedroom.AbvGr, Sale.Condition:
+
+```{r fit_model}
+model_ini<-lm(data=df,log_price~Lot.Shape+Overall.Qual+Neighborhood+Bldg.Type+log_area+Bsmt.Cond+Central.Air+Fireplace.Qu+Garage.Qual+Sale.Condition)
+```
+
+Reasons for including these variables: Based on the EDA shown, Lot.Shape, Central.Air, Overall.Qual, were found to be useful predictors. Further, log_area has a strong correlation with log_price as shown:
+```{r}
+df%>%ggplot(aes(x=log_area,y=log_price))+geom_point()
+```
+
+Price was seen to vary with Neighborhood in the earlier quizzes.
+Price was seen to vary with Fireplace.Qu as shown:
+```{r}
+df%>%ggplot(aes(x=Fireplace.Qu,y=log_price))+geom_boxplot()
+```
+
+Similarly, Garage.Qual and log_price:
+```{r}
+df%>%ggplot(aes(x=Garage.Qual,y=log_price))+geom_boxplot()
+```
+
+These predictors were found to be influential using initial estimates. Also, since we are required to select only 10 variables, each variable from broad categories such as quality, basement, garage, area etc was selected. A more exhaustive model will be developed later:
+
+Let us check out the summary of our model:
+```{r}
+summary(model_ini)
+```
+
+We can see that we are getting an overall adjusted R-squared of 0.8623 which is good for a start!
+For the F-statistic of 112.5, we are getting a p-value of <2.2e-16 which means that the model is statistically significant as a whole. From the results of the model, we can see that Bsmt.Cond is not a statistically significant predictor having all p-values greater than the significance level.
+
+Intepretation of coefficients:
+
+1) Overall.Qual: All else held constant, a unit increase in Overall.Qual will lead to an increase of 0.09513 in log_price
+
+2) Central.AirY: All else held constant, on average, houses which do have Central Air Conditioning have a log_price 0.1742 more than those who do not.
+
+Similar interpretations follow for the rest of the coefficients. The interpretation of intercept is sometimes meaningless in context.
+
+
+* * *
+
+### Section 2.2 Model Selection
+
+Now either using `BAS` another stepwise selection procedure choose the "best" model you can, using your initial model as your starting point. Try at least two different model selection methods and compare their results. Do they both arrive at the same model or do they disagree? What do you think this means?
+
+* * *
+
+Let us do model selection using different techniques, starting with backwards elimination by AIC:
+
+```{r}
+model_ini_AIC<-step(model_ini,k=2)
+summary(model_ini_AIC)
+```
+We can see that no variable has been eliminated using the AIC criterion.
+
+Now, let us do the same thing using the BIC criterion or AIC With k=log(n):
+```{r}
+model_ini_BIC<-step(model_ini,k=log(998))
+summary(model_ini_BIC)
+```
+
+Using the BIC step-wise selection, we can see that Lot.Shape, Fireplace.Qu, Garage.Qual have been eliminated.
+
+Now let us try model selection using backwards elimination and the p-value method:
+```{r}
+summary(model_ini)
+```
+
+Iteration 1 (Eliminate Bsmt.Cond):
+```{r}
+model_ini_iter<-model_ini<-lm(data=df,log_price~Lot.Shape+Overall.Qual+Neighborhood+Bldg.Type+log_area+Central.Air+Fireplace.Qu+Garage.Qual+Sale.Condition)
+summary(model_ini_iter)
+```
+
+Iteration 2 (Eliminate Fireplace.Qu):
+```{r}
+model_ini_iter<-lm(data=df,log_price~Lot.Shape+Overall.Qual+Neighborhood+Bldg.Type+log_area+Central.Air+Garage.Qual+Sale.Condition)
+summary(model_ini_iter)
+```
+
+Thus, we arrive at three different models using the AIC, BIC, p-value methods. Out of the three models, BIC leads to the most parsimonious model. Out of the three approaches, highest adjusted R-squared is obtained by the AIC approach. Let that be our preferred model.
+
+```{r}
+final_model_ini<-model_ini_AIC
+```
+
+
+* * *
+
+### Section 2.3 Initial Model Residuals
+One way to assess the performance of a model is to examine the model's residuals. In the space below, create a residual plot for your preferred model from above and use it to assess whether your model appears to fit the data well. Comment on any interesting structure in the residual plot (trend, outliers, etc.) and briefly discuss potential implications it may have for your model and inference / prediction you might produce.
+
+* * *
+Let us check out the distribution of residuals of our model: 
+```{r model_resid}
+qqnorm(final_model_ini$residuals)
+qqline(final_model_ini$residuals)
+```
+
+From this q-q plot, we can observe that the residuals deviate a little from normalcy at the ends. 
+
+Let us check out the residual plot (Residual vs fitted values): 
+```{r}
+plot(final_model_ini$residuals~final_model_ini$fitted.values)
+```
+
+One can observe that there is mostly a random scatter around 0. However, to the extreme left, there are some outliers.
+
+Now let us see how residuals compare with actual values: 
+```{r}
+plot(df$log_price,final_model_ini$residuals)
+```
+
+One can observe that the model has some negative residuals to the far left. This implies that the model tends to over predict some low-priced houses.
+
+* * *
+
+### Section 2.4 Initial Model RMSE
+
+You can calculate it directly based on the model output. Be specific about the units of your RMSE (depending on whether you transformed your response variable). The value you report will be more meaningful if it is in the original units (dollars).
+
+* * *
+To calculate rmse, first we need to convert residuals from log- units to normal $ units:
+```{r model_rmse}
+resid_ini<-exp(df$log_price)-exp(final_model_ini$fitted.values)
+sqrt(mean(resid_ini^2))
+```
+
+We are getting a root mean square error value of approx 30,770$. 
+* * *
+
+### Section 2.5 Overfitting 
+
+The process of building a model generally involves starting with an initial model (as you have done above), identifying its shortcomings, and adapting the model accordingly. This process may be repeated several times until the model fits the data reasonably well. However, the model may do well on training data but perform poorly out-of-sample (meaning, on a dataset other than the original training data) because the model is overly-tuned to specifically fit the training data. This is called “overfitting.” To determine whether overfitting is occurring on a model, compare the performance of a model on both in-sample and out-of-sample data sets. To look at performance of your initial model on out-of-sample data, you will use the data set `ames_test`.
+
+We will first load ames_test and perform all those transformations and operations that we performed on ames_train:
+```{r loadtest, message = FALSE}
+load("ames_test.Rdata")
+df2<-ames_test
+
+
+df2<-df2%>%mutate(log_price=log(price))
+df2<-df2%>%mutate(log_area=log(area))
+df2<-df2%>%mutate(log_lot_area=log(Lot.Area))
+df2<-df2%>%mutate(Bsmt.Qual=factor(ifelse(is.na(df2$Bsmt.Qual),'No_Bsmt',Bsmt.Qual)))
+df2<-df2%>%mutate(Bsmt.Cond=factor(ifelse(is.na(df2$Bsmt.Cond),'No_Bsmt',Bsmt.Cond)))
+df2<-df2%>%mutate(Bsmt.Exposure=factor(ifelse(is.na(df2$Bsmt.Exposure),'No_Bsmt',Bsmt.Exposure)))
+df2<-df2%>%mutate(BsmtFin.Type.1=factor(ifelse(is.na(df2$BsmtFin.Type.1),'No_Bsmt',BsmtFin.Type.1)))
+df2<-df2%>%mutate(BsmtFin.Type.2=factor(ifelse(is.na(df2$BsmtFin.Type.2),'No_Bsmt',BsmtFin.Type.2)))
+df2<-df2%>%mutate(Fireplace.Qu=factor(ifelse(is.na(df2$Fireplace.Qu),'No_Fireplace',Fireplace.Qu)))
+df2<-df2%>%mutate(Garage.Qual=factor(ifelse(is.na(df2$Garage.Qual),'No_Garage',Garage.Qual)))
+df2<-df2%>%mutate(Garage.Cond=factor(ifelse(is.na(df2$Garage.Cond),'No_Garage',Garage.Cond)))
+df2<-df2%>%filter(!(Neighborhood=='Landmrk'))
+df2<-df2%>%filter(!(is.na(BsmtFin.SF.1)),!(is.na(BsmtFin.SF.2)),!(is.na(Bsmt.Unf.SF)),!(is.na(Total.Bsmt.SF)),!(is.na(Bsmt.Full.Bath)),!(is.na(Bsmt.Half.Bath)))
+df2<-df2%>%filter(!(is.na(Garage.Cars)))
+
+
+df2$Exter.Qual<-factor(df2$Exter.Qual,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df2$Exter.Cond<-factor(df2$Exter.Cond,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df2$Heating.QC<-factor(df2$Heating.QC,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df2$Kitchen.Qual<-factor(df2$Kitchen.Qual,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df2$Functional<-factor(df2$Functional,ordered=T,levels=c('Sal','Sev','Maj2','Maj1','Mod','Min2','Min1','Typ'))
+```
+
+Use your model from above to generate predictions for the housing prices in the test data set.  Are the predictions significantly more accurate (compared to the actual sales prices) for the training data than the test data?  Why or why not? Briefly explain how you determined that (what steps or processes did you use)?
+
+* * *
+
+Let us test the prediction on test data:
+
+```{r initmodel_test}
+predict_ini_test<-predict(final_model_ini,df2)
+resid_ini_test<-exp(df2$log_price)-exp(predict_ini_test)
+sqrt(mean(resid_ini_test^2))
+```
+
+On the test data, we are getting a rmse value of 27601$ which is less than the rmse value obtained using the same model on training data. Although there is not a significant difference between the two, we can say that our model is not suffering from the problem of over-fitting.
+
+* * *
+
+**Note to the learner:** If in real-life practice this out-of-sample analysis shows evidence that the training data fits your model a lot better than the test data, it is probably a good idea to go back and revise the model (usually by simplifying the model) to reduce this overfitting. For simplicity, we do not ask you to do this on the assignment, however.
+
+## Part 3 Development of a Final Model
+
+Now that you have developed an initial model to use as a baseline, create a final model with *at most* 20 variables to predict housing prices in Ames, IA, selecting from the full array of variables in the dataset and using any of the tools that we introduced in this specialization.  
+
+Carefully document the process that you used to come up with your final model, so that you can answer the questions below.
+
+### Section 3.1 Final Model
+
+Provide the summary table for your model.
+
+* * *
+
+We need to create a single variable for porch attribute because others are correlated and will supply redundant information:
+```{r model_playground}
+df<-df%>%mutate(average_porch=(Open.Porch.SF+Enclosed.Porch+X3Ssn.Porch+Screen.Porch)/4)
+```
+
+We will be selecting the following 20 variables for our final model:
+MS.Zoning, log_area, Lot.Config, Neighborhood, Condition.1, Bldg.Type, Overall.Qual, Year.Built, Foundation, Bsmt.Qual, Total.Bsmt.SF, Heating.QC, Central.Air, X1st.Flr.SF, TotRms.AbvGrd, Kitchen.Qual, Functional, Garage.Qual, average_porch, Sale.Condition.
+
+Let us create the model!
+```{r}
+final_model_2<-lm(data=df,log_price~MS.Zoning+log_area+Lot.Config+Neighborhood+Condition.1+Bldg.Type+Overall.Qual+Year.Built+Foundation+Bsmt.Qual+Total.Bsmt.SF+Heating.QC+Central.Air+X1st.Flr.SF+TotRms.AbvGrd+Kitchen.Qual+Functional+Garage.Qual+average_porch+Sale.Condition)
+
+summary(final_model_2)
+```
+
+From the summary output of this model, we can observe that our model has an overall F-statistic of 93.7 which leads to a Adjusted R-squared value of 0.8911. This means that the model is doing well as a whole. However, some predictor variables seem insignificant as indicated by their high p-values. Let us see if we can optimize further:
+
+```{r}
+final_model_2_aic<-step(final_model_2,k=2)
+summary(final_model_2_aic)
+```
+
+Using AIC, we are getting adjusted R-squared of 0.8907 by eliminating 2 variables.
+
+Using BIC, we are getting adjusted R-squared of 0.8648 by eliminating 11 variables!
+
+Using backwards elimination by p-value method, we are getting adjusted R-squared of 0.8857 by eliminating 5-variables.
+
+Moreover, since a lot of important variables are getting eliminated by these approaches and not leading to increase in adjusted R-squared, we will stick with the original model.
+
+* * *
+
+### Section 3.2 Transformation
+
+* * *
+log transformation of area, price, lot.area was done. This is because the relationship between logarithms becomes linear while that between the original variables wasn't linear. This is as shown in the plots below: 
+```{r model_assess}
+df%>%ggplot(aes(x=Lot.Area,y=price))+geom_point()
+```
+
+```{r}
+df%>%ggplot(aes(x=log_lot_area,y=log_price))+geom_point()
+```
+
+We can see that the strength of the linear relationship is considerably improved by the log transformation.
+
+A similar argument holds true for transforming area too.
+
+Some variables like Bsmt.Qual, Heating.QC to name a few were initially nominal categorical variables. However, the levels of the factors were ordinal in nature, hence a transformation from nominal to ordinal factors was done. This is shown below:
+
+```{r}
+str(df$Heating.QC)
+levels(df$Heating.QC)
+```
+
+Further, a new variable average_porch was created to account for the porch related variables. This was done due to high collinearity between the porch variables.
+
+NA values of some variables like Bsmt.Qual were recoded as a separate category.
+* * *
+
+### Section 3.3 Variable Interaction
+
+Did you decide to include any variable interactions? Why or why not? Explain in a few sentences.
+
+* * *
+
+Some Interaction terms are included in our analysis since if they are significant and we decide to drop them, the model becomes less robust. One could draw improper conclusions without including these variables, so they are included. Consider the example below:
+
+Consider the following plot: The slopes of log_price vs log_area differ slightly across the categories of the third variable. A few interaction variables (not this one) are thus included.
+```{r model_inter}
+df%>%ggplot(aes(x=log_area,y=log_price,color=Paved.Drive))+geom_point()
+```
+
+* * *
+
+### Section 3.4 Variable Selection
+
+What method did you use to select the variables you included? Why did you select the method you used? Explain in a few sentences.
+
+* * *
+
+The following variables were found to have strong relationship with response variable from the EDA section:
+Central.Air, Foundation, Overall.Qual, log_area, Neighborhood, Garage.Qual, Bldg.Type.
+
+Further, from the previous analysis, it was found that Lot.Shape, Fireplace.Qu were insignificant predictors of the response variables. We were asked to shortlist 20 variables from the set of 81 predictor variables. The house has different attributes like Garage, Basement, Bedrooms, Area etc, so at least one variable from each attribute must be included in those 20 variables to make the model robust. 
+
+Examples of variable selection reasons:
+X1st.Flr.SF was found to have a strong linear relationship with log_price indicated by the scatter plot and correlation coefficient:
+
+```{r model_select}
+df%>%ggplot(aes(x=X1st.Flr.SF,y=log_price))+geom_point()
+cor(df$X1st.Flr.SF,df$log_price)
+```
+
+A similar case was observed for Total.Bsmt.SF and log_price:
+```{r}
+df%>%ggplot(aes(x=Total.Bsmt.SF,y=log_price))+geom_point()
+cor(df$Total.Bsmt.SF,df$log_price)
+```
+
+This was how other numerical variables were selected.
+
+Anova test was used to determine the influence of categorical variables on the response variable.
+
+For example, consider the relationship between Kitchen.Qual and log_price:
+```{r}
+df%>%group_by(Kitchen.Qual)%>%summarise(mean=mean(log_price),median=median(log_price),sd=sd(log_price),number=n())
+
+df%>%ggplot(aes(x=Kitchen.Qual,y=log_price))+geom_boxplot()
+```
+
+Both the summary statistics and box-plots indicate an association between the two. An Anova test confirms this as shown:
+
+```{r}
+inference(data=df,x=Kitchen.Qual,y=log_price,type='ht',method='theoretical',statistic='mean',alternative='greater')
+```
+
+Reasons for excluding some variables: Those who failed these tests, were not linearly associated with the response variable and thus would not satisfy the assumptions of regression. Further, since variable selection requires actual experience, important variables were not dropped.
+
+* * *
+
+### Section 3.5 Model Testing
+
+How did testing the model on out-of-sample data affect whether or how you changed your model? Explain in a few sentences.
+
+* * *
+Our model is seen to perform better on out-of-sample data, thus, no change has been made after testing on out-of-sample data.
+
+* * *
+
+## Part 4 Final Model Assessment
+
+### Section 4.1 Final Model Residual
+
+For your final model, create and briefly interpret an informative plot of the residuals.
+
+* * *
+The following qq-plot shows the distribution of residuals of our final model. It is safe to say that they are normally distributed with a few outliers towards the endpoints.
+
+```{r}
+qqnorm(final_model_2$residuals)
+qqline(final_model_2$residuals)
+```
+
+
+```{r}
+plot(final_model_2$residuals~final_model_2$fitted.values)
+```
+
+This plot shows how residuals compare with fitted values. They are clearly normally distributed (random scatter around zero). Also, there is constant variability (No fan-shape). There is just one extreme outlier for a fitted value greater than 13. 
+
+* * *
+
+### Section 4.2 Final Model RMSE
+
+For your final model, calculate and briefly comment on the RMSE.
+
+* * *
+In order to calculate rmse, let us first create the same variables we created in the training data-set:
+```{r}
+df2<-df2%>%mutate(average_porch=(Open.Porch.SF+Enclosed.Porch+X3Ssn.Porch+Screen.Porch)/4)
+df2<-df2%>%filter(!(Foundation=='Wood'))
+```
+
+Let us calculate RMSE for training data:
+```{r}
+resid_final_train<-exp(df$log_price)-exp(final_model_2$fitted.values)
+sqrt(mean(resid_final_train^2))
+```
+We see that we are getting a rmse value of 27093$.
+
+Now, on the test data:
+```{r}
+predict_final_test<-predict(final_model_2,df2)
+resid_final_test<-exp(df2$log_price)-exp(predict_final_test)
+sqrt(mean(resid_final_test^2))
+```
+This value (2219.62$) is lower than that obtained on the training data. So once again, our model is doing better on test data.
+
+Moreover, this final model is a substantial improvement over the initial model with a decrease in rmse of about 5000$
+
+* * *
+
+### Section 4.3 Final Model Evaluation
+
+What are some strengths and weaknesses of your model?
+
+* * *
+Strengths: Our model has a high adjusted R-squared of about 0.8911 which means that it explains 89% of variability in the data and thus has good predictive performance.
+
+RMSE for test data is less than that of training data which means that we do not have the problem of over fitting.
+
+Since variables from mostly all attributes are included, our model is robust.
+
+Weaknesses: Some categorical variables were extremely imbalanced and could lead to biased estimates.
+
+```{r}
+plot(final_model_2$residuals~df$log_price)
+```
+
+This plot shows that there are some homes with exceptionally low prices having large negative residuals. This means that the model has over-valued them.
+
+```{r}
+combined<-data.frame(cbind(df2,resid_final_test^2))
+head(combined%>%group_by(Neighborhood)%>%summarise(mean=mean(resid_final_test.2),median=median(resid_final_test.2),number=n())%>%arrange(desc(mean)))
+```
+
+Grouping square residuals by neighborhood, we can see that NoRidge neighborhood is a weakness of our model.
+
+* * *
+
+### Section 4.4 Final Model Validation
+
+Testing your final model on a separate, validation data set is a great way to determine how your model will perform in real-life practice. 
+
+You will use the “ames_validation” dataset to do some additional assessment of your final model. Discuss your findings, be sure to mention:
+* What is the RMSE of your final model when applied to the validation data?  
+* How does this value compare to that of the training data and/or testing data?
+* What percentage of the 95% predictive confidence (or credible) intervals contain the true price of the house in the validation data set?  
+* From this result, does your final model properly reflect uncertainty?
+
+```{r loadvalidation, message = FALSE}
+load("ames_validation.Rdata")
+df3<-ames_validation
+```
+
+* * *
+
+Before prediction on validation data, we need to perform the same operations we performed on previous data frames:
+
+```{r model_validate}
+df3<-df3%>%mutate(log_price=log(price))
+df3<-df3%>%mutate(log_area=log(area))
+df3<-df3%>%mutate(log_lot_area=log(Lot.Area))
+
+df3<-df3%>%mutate(Bsmt.Qual=factor(ifelse(is.na(df3$Bsmt.Qual),'No_Bsmt',Bsmt.Qual)))
+df3<-df3%>%mutate(Bsmt.Cond=factor(ifelse(is.na(df3$Bsmt.Cond),'No_Bsmt',Bsmt.Cond)))
+df3<-df3%>%mutate(Bsmt.Exposure=factor(ifelse(is.na(df3$Bsmt.Exposure),'No_Bsmt',Bsmt.Exposure)))
+df3<-df3%>%mutate(BsmtFin.Type.1=factor(ifelse(is.na(df3$BsmtFin.Type.1),'No_Bsmt',BsmtFin.Type.1)))
+df3<-df3%>%mutate(BsmtFin.Type.2=factor(ifelse(is.na(df3$BsmtFin.Type.2),'No_Bsmt',BsmtFin.Type.2)))
+df3<-df3%>%mutate(Fireplace.Qu=factor(ifelse(is.na(df3$Fireplace.Qu),'No_Fireplace',Fireplace.Qu)))
+df3<-df3%>%mutate(Garage.Qual=factor(ifelse(is.na(df3$Garage.Qual),'No_Garage',Garage.Qual)))
+df3<-df3%>%mutate(Garage.Cond=factor(ifelse(is.na(df3$Garage.Cond),'No_Garage',Garage.Cond)))
+df3<-df3%>%filter(!(is.na(BsmtFin.SF.1)),!(is.na(BsmtFin.SF.2)),!(is.na(Bsmt.Unf.SF)),!(is.na(Total.Bsmt.SF)),!(is.na(Bsmt.Full.Bath)),!(is.na(Bsmt.Half.Bath)))
+df3<-df3%>%filter(!(is.na(Garage.Cars)))
+
+df3<-df3%>%filter(!(Foundation=='Wood'))
+df3<-df3%>%filter(!(MS.Zoning=='A (agr)'))
+
+df3$Exter.Qual<-factor(df3$Exter.Qual,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df3$Exter.Cond<-factor(df3$Exter.Cond,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df3$Heating.QC<-factor(df3$Heating.QC,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df3$Kitchen.Qual<-factor(df3$Kitchen.Qual,ordered=T,levels=c('Po','Fa','TA','Gd','Ex'))
+df3$Functional<-factor(df3$Functional,ordered=T,levels=c('Sal','Sev','Maj2','Maj1','Mod','Min2','Min1','Typ'))
+
+df3<-df3%>%mutate(average_porch=(Open.Porch.SF+Enclosed.Porch+X3Ssn.Porch+Screen.Porch)/4)
+
+```
+
+Now let us test our model on validation data!
+```{r}
+predict_final_val<-predict(final_model_2,df3)
+resid_final_val<-exp(df3$log_price)-exp(predict_final_val)
+sqrt(mean(resid_final_val^2))
+```
+
+We are getting a rmse value of 21899.06$
+This is lower than that on both training and testing data! This means that our model is doing very well.
+
+Now, to calculate coverage probability:
+```{r}
+predict_final_cov_val<-predict(final_model_2,df3,interval='prediction')
+mean(df3$log_price>predict_final_cov_val[,'lwr']&df3$log_price<predict_final_cov_val[,'upr'])
+```
+
+We are getting a coverage probability of 0.98 which means that the true values fall within the intervals of prediction 98% of the time.
+
+Thus, uncertainty is well reflected in this model.
+
+* * *
+
+## Part 5 Conclusion
+
+Provide a brief summary of your results, and a brief discussion of what you have learned about the data and your model. 
+
+* * *
+
+1. From the EDA we explored the relationship between different variables in the data-set.
+For example, t-test for difference between two means was used to find out if mean log_price is different for homes with and without Central Air conditioning. Similarly, other tests were used to identify statistical significance.
+
+2. log_transforming certain variables like area, price lead to better fits and are thus recommended.
+
+3. On the initial model, maximum adjusted R-squared was obtained by the AIC criteria.
+
+4. RMSE values of the final model on training and test data are 27093$ and 22129.62$ which are a significant improvement over the initial model which had the same values as 30770.06$ and 27601$. 
+
+5. Certain variables like average_porch were created in order to represent other porch variables.
+
+6. Our final model is doing better on test data which means it does not suffer from over fitting.
+
+7. Highest squared residuals were obtained for NoRidge neighborhood.
+
+8. A lot of variables in the data set had null values which meant absence of that feature. Encoding them as a separate category helped in our analysis.
+
+9. Certain categorical variables like Heating.QC were ordinal in nature but encoded as nominal by default. They were encoded as ordinal variables later as needed.
+
+* * *
